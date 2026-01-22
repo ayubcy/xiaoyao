@@ -1,0 +1,536 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>逍遥篇</title>
+    <style>
+        /* --- 基础重置 --- */
+        * { margin: 0; padding: 0; box-sizing: border-box; user-select: none; -webkit-tap-highlight-color: transparent; }
+        body { background-color: #000; display: flex; justify-content: center; align-items: center; min-height: 100vh; overflow: hidden; font-family: "Microsoft YaHei", sans-serif; }
+
+        /* --- 游戏容器：缩短高度 --- */
+        .game-container {
+            position: relative; width: 100%; max-width: 800px; aspect-ratio: 9/14; /* 从9/16改为9/14，缩短高度 */
+            height: auto; max-height: 100vh; background-color: #333; box-shadow: 0 0 20px rgba(0,0,0,0.5); overflow: hidden;
+        }
+
+        /* --- 背景与立绘 --- */
+        .background { position: absolute; top: 0; left: 0; width: 100%; height: 100%; object-fit: cover; z-index: 1; }
+        .character {
+            position: absolute; bottom: 17%; /* 立绘向上移（原15%改为17%） */
+            left: 50%; transform: translateX(-50%); width: 92%; /* 稍微放大立绘 */ 
+            height: 72%; /* 稍微放大立绘 */
+            background-size: contain; background-repeat: no-repeat; background-position: center bottom;
+            z-index: 2; pointer-events: none; transition: background-image 0.2s ease;
+        }
+
+        /* --- UI组件 --- */
+        .dialogue-box {
+            position: absolute; bottom: 2%; left: 50%; transform: translateX(-50%); width: 96%; height: 28%; /* 对话框高度增加 */
+            background-size: 100% 100%; background-repeat: no-repeat; z-index: 10;
+        }
+        .name-box {
+            position: absolute; bottom: 29%; right: 5%; width: 35%; height: 8%; /* 名称框位置调整 */
+            background-size: 100% 100%; background-repeat: no-repeat; background-position: center; z-index: 11;
+            display: flex; justify-content: center; align-items: center;
+            color: #5d4037; font-size: clamp(16px, 2.5vh, 24px); font-weight: bold; text-shadow: 1px 1px 2px rgba(255,255,255,0.8);
+        }
+        .dialogue-text {
+            position: absolute; bottom: 6%; left: 52%; transform: translateX(-50%); width: 84%; height: 20%; /* 文本区域高度调整 */
+            font-size: clamp(14px, 2.2vh, 20px); color: #5d4037; /* 改为与名称框相同的颜色 */
+            line-height: 1.6; font-weight: bold; z-index: 12; pointer-events: none; padding-top: 10px;
+            text-shadow: 1px 1px 2px rgba(255,255,255,0.8); /* 修改阴影为白色阴影，提高可读性 */
+        }
+
+        /* --- 按钮容器：贴左布局 --- */
+        .buttons-container {
+            position: absolute; bottom: 28%; /* 按钮整体向下移（原25%改为28%） */
+            left: 0;
+            width: 36%;
+            padding-left: 10px;
+            display: flex; flex-direction: column; gap: 10px;
+            z-index: 20;
+        }
+
+        /* --- 按钮：统一大小，缩小一点 --- */
+        .action-button {
+            width: 100%; 
+            height: 9vh; /* 按钮高度减小（原10vh改为9vh） */
+            min-height: 50px; /* 最小高度减小 */
+            max-height: 65px; /* 最大高度减小 */
+            background-size: contain; 
+            background-repeat: no-repeat;
+            background-position: left center;
+            cursor: pointer; 
+            transition: transform 0.1s;
+        }
+        .action-button:active { transform: scale(0.95); }
+
+        .hidden { display: none !important; }
+        .fade-in { animation: fadeIn 0.3s forwards; }
+        @keyframes fadeIn { from { opacity: 0; transform: translateX(-20px); } to { opacity: 1; transform: translateX(0); } }
+    </style>
+</head>
+<body>
+
+    <div class="game-container" onclick="resetIdleTimer()">
+        <img class="background" src="https://z.wiki/u/Pgqc4EaGR" alt="背景">
+        <div class="character" id="character" style="background-image: url('https://z.wiki/u/39i9oWfwd');"></div>
+        <div class="name-box" style="background-image: url('https://z.wiki/u/F1I5hYxLc');">逍遥</div>
+        <div class="dialogue-box" style="background-image: url('https://z.wiki/u/8ICI8azcG');"></div>
+        <div class="dialogue-text" id="dialogue-text">嗯？你来了呀。</div>
+
+        <div class="buttons-container">
+            <!-- 主菜单 -->
+            <div id="group-main" class="fade-in">
+                <div class="action-button" onclick="handleButtonClick(this, 'touch')" 
+                     data-normal="https://z.wiki/u/VDf1bRkQM" 
+                     data-click="https://z.wiki/u/W2UiSLy8h"
+                     style="background-image: url('https://z.wiki/u/VDf1bRkQM');"></div>
+                <div class="action-button" onclick="handleButtonClick(this, 'chat')" 
+                     data-normal="https://z.wiki/u/NaVWRoc6w" 
+                     data-click="https://z.wiki/u/9Id4xKlyE"
+                     style="background-image: url('https://z.wiki/u/NaVWRoc6w');"></div>
+                <div class="action-button" onclick="handleButtonClick(this, 'gift')" 
+                     data-normal="https://z.wiki/u/5ZusZUApM" 
+                     data-click="https://z.wiki/u/gTanLxKBo"
+                     style="background-image: url('https://z.wiki/u/5ZusZUApM');"></div>
+            </div>
+
+            <!-- 子菜单：触摸 -->
+            <div id="group-touch" class="hidden">
+                <div class="action-button" onclick="handleSubAction('touch', 'head', this)" 
+                     data-normal="https://z.wiki/u/lPdVJSfMg" 
+                     data-click="https://z.wiki/u/nXCSq2omr"
+                     style="background-image: url('https://z.wiki/u/lPdVJSfMg');"></div>
+                <div class="action-button" onclick="handleSubAction('touch', 'face', this)" 
+                     data-normal="https://z.wiki/u/H4nnaATOR" 
+                     data-click="https://z.wiki/u/puVbYbnbC"
+                     style="background-image: url('https://z.wiki/u/H4nnaATOR');"></div>
+                <div class="action-button" onclick="handleSubAction('touch', 'clothes', this)" 
+                     data-normal="https://z.wiki/u/uo7t7ILP6" 
+                     data-click="https://z.wiki/u/D3miTqDFF"
+                     style="background-image: url('https://z.wiki/u/uo7t7ILP6');"></div>
+                <div class="action-button" onclick="switchGroup('main')" 
+                     data-normal="https://z.wiki/u/MW5ObvZ9h" 
+                     data-click="https://z.wiki/u/iq5ylZkUJ"
+                     style="background-image: url('https://z.wiki/u/MW5ObvZ9h');"></div>
+            </div>
+
+            <!-- 子菜单：聊天 -->
+            <div id="group-chat" class="hidden">
+                <div class="action-button" onclick="handleSubAction('chat', 'normal', this)" 
+                     data-normal="https://z.wiki/u/NaVWRoc6w" 
+                     data-click="https://z.wiki/u/9Id4xKlyE"
+                     style="background-image: url('https://z.wiki/u/NaVWRoc6w');"></div>
+                <div class="action-button" onclick="handleSubAction('chat', 'time', this)" 
+                     data-normal="https://z.wiki/u/c7bo4ffXs" 
+                     data-click="https://z.wiki/u/4JgUMdF5B"
+                     style="background-image: url('https://z.wiki/u/c7bo4ffXs');"></div>
+                <div class="action-button" onclick="handleSubAction('chat', 'mood', this)" 
+                     data-normal="https://z.wiki/u/46xt4mEhe" 
+                     data-click="https://z.wiki/u/DoZrvcLWf"
+                     style="background-image: url('https://z.wiki/u/46xt4mEhe');"></div>
+                <div class="action-button" onclick="switchGroup('main')" 
+                     data-normal="https://z.wiki/u/MW5ObvZ9h" 
+                     data-click="https://z.wiki/u/iq5ylZkUJ"
+                     style="background-image: url('https://z.wiki/u/MW5ObvZ9h');"></div>
+            </div>
+
+            <!-- 子菜单：礼物 -->
+            <div id="group-gift" class="hidden">
+                <div class="action-button" onclick="handleSubAction('gift', 'cow', this)" 
+                     data-normal="https://z.wiki/u/pOuuZupjb" 
+                     data-click="https://z.wiki/u/q8IoJ8R7N"
+                     style="background-image: url('https://z.wiki/u/pOuuZupjb');"></div>
+                <div class="action-button" onclick="handleSubAction('gift', 'tease', this)" 
+                     data-normal="https://z.wiki/u/VAekZ96fi" 
+                     data-click="https://z.wiki/u/DlBuKdBDk"
+                     style="background-image: url('https://z.wiki/u/VAekZ96fi');"></div>
+                <div class="action-button" onclick="handleSubAction('gift', 'grass', this)" 
+                     data-normal="https://z.wiki/u/yP54drXWv" 
+                     data-click="https://z.wiki/u/39qufBclO"
+                     style="background-image: url('https://z.wiki/u/yP54drXWv');"></div>
+                <div class="action-button" onclick="switchGroup('main')" 
+                     data-normal="https://z.wiki/u/MW5ObvZ9h" 
+                     data-click="https://z.wiki/u/iq5ylZkUJ"
+                     style="background-image: url('https://z.wiki/u/MW5ObvZ9h');"></div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        const assets = {
+            char: {
+                normal: "https://z.wiki/u/39i9oWfwd",
+                grass: "https://z.wiki/u/PFXKoG9LI",
+                speak: "https://z.wiki/u/ZaoS2YZa9",
+                laugh: "https://z.wiki/u/ukEwOmjPf",
+                cat: "https://z.wiki/u/NIZtsVXNr",
+                cat_blush: "https://z.wiki/u/DBeT0GpYa",
+                angry: "https://z.wiki/u/AX1BKw5MI",
+                mad: "https://z.wiki/u/LyM251hkJ",
+                sad: "https://z.wiki/u/rAZxnpWge",
+                confused: "https://z.wiki/u/Yj17IdQa8"
+            }
+        };
+
+        const textDB = {
+            touch: {
+                head: {
+                    options: [
+                        "喜欢摸我的头发吗？",
+                        "可以哦，把头发弄乱也没关系呢",
+                        "很舒服，多摸一摸我吧。",
+                        "多得寸进尺一点吧，我都会接受的",
+                        "只有你可以这样摸哦。"
+                    ],
+                    combo: "头发和心一起变乱了呢……"
+                },
+                face: {
+                    options: [
+                        "你的手好暖和...",
+                        "脸上有什么东西吗？",
+                        "脸要被捏变形啦……",
+                        "多摸摸我吧……我很喜欢",
+                        "唔……痒痒的。"
+                    ],
+                    combo: "不要离开了……我喜欢被你这样摸。"
+                },
+                clothes: {
+                    options: [
+                        "嗯？我的衣服有什么特别的吗？",
+                        "再扯会坏掉了。",
+                        "只是很普通的衣服啦……",
+                        "嗯，再这样我就要觉得你图谋不轨了哦.",
+                        "我也觉得这身很帅气！"
+                    ],
+                    combo: "果然是想图谋不轨吧，抓住你了。"
+                }
+            },
+            chat: {
+                normal: {
+                    options: [
+                        "最近天气变冷了，要注意保暖哦。",
+                        "今天过得怎么样？",
+                        "无论发生什么，我都在你身边。",
+                        "感到难过时我永远都在你身边",
+                        "今天有什么值得开心的事情，想要跟我说说吗？"
+                    ],
+                    combo: "和你待在一起，不管聊什么，我都感到幸福。"
+                },
+                time: {
+                    options: [
+                        "和你在一起的每一秒都很珍贵。",
+                        "时间过得真快啊...",
+                        "不想让你走...",
+                        "想知道现在的时间？现在是 {time} 哦。",
+                        "如果是和你，哪怕浪费时间也很幸福哦。"
+                    ],
+                    combo: "如果和你在一起的时间能永远停滞就好了。"
+                },
+                mood: {
+                    options: [
+                        "只要看到你，我就很幸福",
+                        "其实...刚才有点想你。",
+                        "你开心的话，我也会很开心的。",
+                        "不管什么心情，我都会陪着你。",
+                        "有什么烦恼可以告诉我哦。"
+                    ],
+                    combo: "想知道我现在的心情吗？我现在很幸福哦，因为和你在一起。"
+                }
+            },
+            gift: {
+                cow: {
+                    options: [
+                        "一瓶可不够，我很贪心的，不如送我一张你手写的畅享券吧，我愿意拿着券自费买。",
+                        "每次喝完都感觉头晕目眩……说不定可以干出一点想干但不敢的事情呢",
+                        "嗯？想知道什么事情？不告诉你，保密。",
+                        "送我的？那我应该不舍得喝了，只能好好珍藏了。",
+                        "谢谢，嗯……买条丝带把这瓶系上蝴蝶结……这样是不是很有仪式感？"
+                    ],
+                    combo: "送我这么多，是想要撬开我的嘴吗？"
+                },
+                tease: {
+                    options: [
+                        "哎呦……我被偷袭了",
+                        "不行了……我被击倒了……呃",
+                        "下一次搞小动作，可以动作再小一点哦",
+                        "捉到你了",
+                        "又被我捉到了哦哈哈。"
+                    ],
+                    combo: "嗯……很有坚持不解的毅力，不过坏孩子得有惩罚才对吧？"
+                },
+                grass: {
+                    options: [
+                        "想看我这样吗？",
+                        "这该不会是路边随便揪的，然后送给我的吧？",
+                        "这么多？想要我变成羊吗？",
+                        "帅吗，是不是被我迷住了？",
+                        "下次可以送我更新鲜一点的。"
+                    ],
+                    combo: "感觉我已经变成了羊了，咩。"
+                }
+            },
+            idle: [
+                "(打哈欠)...你还在吗？",
+                "盯着我看这么久，不如来找我聊聊天吧？",
+                "是不是睡着了？",
+                "...理理我。",
+                "(偷偷靠近屏幕)..."
+            ],
+            special: {
+                default: "终于舍得理我了？",
+                touch: "刚才都不理我，现在想摸我了？",
+                gift: "这不是随意打发我的礼物吧？",
+                chat: "想说什么，还是想解释为什么刚才没理我？"
+            }
+        };
+
+        const elText = document.getElementById('dialogue-text');
+        const elChar = document.getElementById('character');
+        const groups = {
+            main: document.getElementById('group-main'),
+            touch: document.getElementById('group-touch'),
+            chat: document.getElementById('group-chat'),
+            gift: document.getElementById('group-gift')
+        };
+
+        let idleTimer;
+        let clickCount = 0;
+        let lastAction = '';
+        let isIdleState = false;
+        let usedTexts = {
+            touch: { head: [], face: [], clothes: [] },
+            chat: { normal: [], time: [], mood: [] },
+            gift: { cow: [], tease: [], grass: [] }
+        };
+
+        resetIdleTimer();
+        function resetIdleTimer() {
+            clearTimeout(idleTimer);
+            idleTimer = setTimeout(() => {
+                isIdleState = true;
+                setCharImage(assets.char.confused);
+                typeWriter(textDB.idle[Math.floor(Math.random() * textDB.idle.length)]);
+            }, 120000);
+        }
+
+        // 主菜单按钮点击处理
+        function handleButtonClick(button, target) {
+            // 按钮点击效果
+            if (button) {
+                const clickImg = button.getAttribute('data-click');
+                const normalImg = button.getAttribute('data-normal');
+                if (clickImg) {
+                    button.style.backgroundImage = `url('${clickImg}')`;
+                    // 300ms后恢复原图
+                    setTimeout(() => {
+                        button.style.backgroundImage = `url('${normalImg}')`;
+                    }, 300);
+                }
+            }
+            
+            if(isIdleState) {
+                isIdleState = false;
+                setCharImage(assets.char.cat);
+                typeWriter(textDB.special.default);
+                resetIdleTimer();
+                return;
+            }
+
+            resetIdleTimer();
+            for(let k in groups) {
+                groups[k].classList.add('hidden');
+                groups[k].classList.remove('fade-in');
+            }
+            if(groups[target]) {
+                groups[target].classList.remove('hidden');
+                void groups[target].offsetWidth;
+                groups[target].classList.add('fade-in');
+            }
+            
+            let msg = '';
+            if(target === 'touch') msg = '这次想做什么？';
+            else if(target === 'chat') msg = '我在听。';
+            else if(target === 'gift') msg = '有好东西吗？';
+            
+            if(msg) typeWriter(msg);
+            if(target === 'main') {
+                setCharImage(assets.char.normal);
+                clickCount = 0;
+            }
+        }
+
+        // 子菜单按钮点击处理
+        function handleSubAction(group, type, button) {
+            // 按钮点击效果
+            if (button) {
+                const clickImg = button.getAttribute('data-click');
+                const normalImg = button.getAttribute('data-normal');
+                if (clickImg) {
+                    button.style.backgroundImage = `url('${clickImg}')`;
+                    // 300ms后恢复原图
+                    setTimeout(() => {
+                        button.style.backgroundImage = `url('${normalImg}')`;
+                    }, 300);
+                }
+            }
+            
+            resetIdleTimer();
+            if (isIdleState) {
+                isIdleState = false;
+                setCharImage(assets.char.angry);
+                if(group === 'touch') typeWriter(textDB.special.touch);
+                else if(group === 'gift') typeWriter(textDB.special.gift);
+                else if(group === 'chat') typeWriter(textDB.special.chat);
+                else typeWriter(textDB.special.default);
+                return;
+            }
+
+            if (lastAction === type) clickCount++;
+            else { clickCount = 1; lastAction = type; }
+
+            let txt = "";
+            const actionData = textDB[group][type];
+            const texts = actionData.options;
+            let used = usedTexts[group][type];
+
+            if (clickCount >= 5) {
+                txt = actionData.combo;
+                // 根据group和type设置combo立绘
+                if (group === 'touch') {
+                    if (type === 'head' || type === 'face') {
+                        setCharImage(assets.char.laugh); // 摸头和摸脸的combo使用正常笑
+                    } else if (type === 'clothes') {
+                        setCharImage(assets.char.normal); // 摸衣服的combo使用正常
+                    }
+                } else if (group === 'gift') {
+                    if (type === 'cow') {
+                        setCharImage(assets.char.cat_blush); // 黄牛combo使用猫猫嘴脸红
+                    } else if (type === 'tease') {
+                        setCharImage(assets.char.cat_blush); // 戏弄combo使用猫猫嘴脸红
+                    } else if (type === 'grass') {
+                        setCharImage(assets.char.grass);
+                    }
+                } else {
+                    // 其他情况使用默认的cat_blush
+                    setCharImage(assets.char.cat_blush);
+                }
+                clickCount = 0;
+            } else {
+                let availableIndices = texts.map((_, i) => i).filter(i => !used.includes(i));
+                if (availableIndices.length === 0) {
+                    usedTexts[group][type] = [];
+                    availableIndices = texts.map((_, i) => i);
+                }
+                let randomIndex = availableIndices[Math.floor(Math.random() * availableIndices.length)];
+                usedTexts[group][type].push(randomIndex);
+                txt = texts[randomIndex];
+
+                if (txt.includes("{time}")) {
+                    const now = new Date();
+                    const timeStr = `${now.getHours()}:${String(now.getMinutes()).padStart(2, '0')}`;
+                    txt = txt.replace("{time}", timeStr);
+                }
+
+                // 根据group、type和选中的文本来设置立绘
+                if (group === 'touch') {
+                    if (type === 'head') {
+                        setCharImage(assets.char.normal); // 摸头默认使用正常
+                    } else if (type === 'face') {
+                        // 摸脸，如果是特定文本使用委屈，否则使用正常
+                        if (txt === "脸要被捏变形啦……") {
+                            setCharImage(assets.char.sad); // 委屈
+                        } else {
+                            setCharImage(assets.char.normal);
+                        }
+                    } else if (type === 'clothes') {
+                        // 摸衣服，默认使用疑惑，但特定文本使用正常笑
+                        if (txt === "我也觉得这身很帅气！") {
+                            setCharImage(assets.char.laugh); // 正常笑
+                        } else {
+                            setCharImage(assets.char.confused); // 疑惑
+                        }
+                    }
+                } else if (group === 'gift') {
+                    if (type === 'cow') {
+                        // 黄牛按钮
+                        if (txt === "一瓶可不够，我很贪心的，不如送我一张你手写的畅享券吧，我愿意拿着券自费买。" || 
+                            txt === "谢谢，嗯……买条丝带把这瓶系上蝴蝶结……这样是不是很有仪式感？") {
+                            setCharImage(assets.char.cat); // 一瓶可不够这句改为猫猫嘴
+                        } else {
+                            setCharImage(assets.char.normal); // 其他改为正常
+                        }
+                    } else if (type === 'tease') {
+                        // 戏弄按钮
+                        if (txt === "哎呦……我被偷袭了" || txt === "不行了……我被击倒了……呃") {
+                            setCharImage(assets.char.sad); // 偷袭和击倒这两句改为委屈
+                        } else if (txt === "捉到你了" || txt === "又被我捉到了哦哈哈。") {
+                            setCharImage(assets.char.cat_blush); // 捉到了和又被捉到了改为猫猫嘴笑
+                        } else {
+                            setCharImage(assets.char.laugh); // 其他改为正常笑
+                        }
+                    } else if (type === 'grass') {
+                        setCharImage(assets.char.grass);
+                    }
+                } else if (group === 'chat') {
+                    setCharImage(assets.char.speak);
+                } else {
+                    setCharImage(assets.char.normal);
+                }
+            }
+
+            typeWriter(txt);
+        }
+
+        // 返回按钮处理
+        function switchGroup(target) {
+            // 这里不需要按钮效果，因为返回按钮的点击效果在HTML中已经通过onclick触发
+            resetIdleTimer();
+            if(isIdleState) {
+                isIdleState = false;
+                setCharImage(assets.char.cat);
+                typeWriter(textDB.special.default);
+                resetIdleTimer();
+                return;
+            }
+
+            resetIdleTimer();
+            for(let k in groups) {
+                groups[k].classList.add('hidden');
+                groups[k].classList.remove('fade-in');
+            }
+            if(groups[target]) {
+                groups[target].classList.remove('hidden');
+                void groups[target].offsetWidth;
+                groups[target].classList.add('fade-in');
+            }
+            
+            if(target === 'main') {
+                typeWriter("还想做点别的吗？");
+                setCharImage(assets.char.normal);
+                clickCount = 0;
+            }
+        }
+
+        function setCharImage(url) { elChar.style.backgroundImage = `url('${url}')`; }
+
+        let typeTimer;
+        function typeWriter(txt) {
+            clearTimeout(typeTimer);
+            elText.innerHTML = '';
+            let i = 0;
+            function run() {
+                if(i < txt.length) {
+                    elText.innerHTML += txt.charAt(i);
+                    i++;
+                    typeTimer = setTimeout(run, 30);
+                }
+            }
+            run();
+        }
+    </script>
+</body>
+</html>
